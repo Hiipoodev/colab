@@ -64,51 +64,42 @@ def get_authenticated_service(args):
     credentials=credentials)
 
 def initialize_upload(youtube, options):
-    tags = None
-    if options.keywords:
-        tags = options.keywords.split(",")
+  tags = None
+  if options.keywords:
+    tags = options.keywords.split(",")
 
-    body = {
-        'snippet': {
-            'title': options.title,
-            'description': options.description,
-            'tags': tags,
-            'categoryId': options.category,
-            'defaultLanguage': 'en',
-            'localized': {
-                'en': {
-                    'title': options.title,
-                    'description': options.description
-                }
-            }
-        },
-        'status': {
-            'privacyStatus': options.privacyStatus
-        }
+  body = {
+    "id": options.video_id,  # Add the video ID here
+    "snippet": {
+      "title": options.title,
+      "description": options.description,
+      "tags": tags,
+      "categoryId": options.category,
+      "defaultLanguage": "en",
+      "defaultAudioLanguage": "en"
+    },
+    "localizations": {
+      "es": {
+        "title": options.title_es,
+        "description": options.description_es
+      },
+      "zh-CN": {
+        "title": options.title_zh,
+        "description": options.description_zh
+      }
     }
+  }
 
-    # Add support for Spanish and Chinese languages
-    if options.title_es or options.description_es:
-        body['snippet']['localized']['es'] = {
-            'title': options.title_es,
-            'description': options.description_es
-        }
+  update_request = youtube.videos().update(
+    part="snippet,localizations",
+    body=body
+  )
 
-    if options.title_zh or options.description_zh:
-        body['snippet']['localized']['zh'] = {
-            'title': options.title_zh,
-            'description': options.description_zh
-        }
+  update_response = update_request.execute()
 
-    insert_request = youtube.videos().insert(
-        part=','.join(body.keys()),
-        body=body,
-        media_body=MediaFileUpload(options.file, chunksize=-1, resumable=True)
-    )
+  print(f"Updated video '{update_response['id']}' with multiple language metadata.")
 
-    resumable_upload(insert_request)
-
-def resumable_upload(insert_request):
+def resumable_upload(insert_request, youtube, options):
   response = None
   error = None
   retry = 0
@@ -119,6 +110,8 @@ def resumable_upload(insert_request):
       if response is not None:
         if 'id' in response:
           print("Video id '%s' was successfully uploaded." % response['id'])
+          options.video_id = response['id']
+          initialize_upload(youtube, options)
         else:
           exit("The upload failed with an unexpected response: %s" % response)
     except HttpError as e:
@@ -147,12 +140,12 @@ if __name__ == '__main__':
   argparser.add_argument("--category", default="22", help="Numeric video category. See https://developers.google.com/youtube/v3/docs/videoCategories/list")
   argparser.add_argument("--keywords", help="Video keywords, comma separated", default="")
   argparser.add_argument("--privacyStatus", choices=VALID_PRIVACY_STATUSES, default=VALID_PRIVACY_STATUSES[0], help="Video privacy status.")
-  # Add arguments for Spanish and Chinese titles and descriptions
-  argparser.add_argument("--title_es", help="Video title in Spanish", default="")
-  argparser.add_argument("--description_es", help="Video description in Spanish", default="")
-  argparser.add_argument("--title_zh", help="Video title in Chinese", default="")
-  argparser.add_argument("--description_zh", help="Video description in Chinese", default="")
-
+  argparser.add_argument("--title_en", help="English video title", default="")
+  argparser.add_argument("--description_en", help="English video description", default="")
+  argparser.add_argument("--title_es", help="Spanish video title", default="")
+  argparser.add_argument("--description_es", help="Spanish video description", default="")
+  argparser.add_argument("--title_zh", help="Chinese video title", default="")
+  argparser.add_argument("--description_zh", help="Chinese video description", default="")
   args = argparser.parse_args()
 
   if not os.path.exists(args.file):
